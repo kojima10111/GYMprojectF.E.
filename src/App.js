@@ -1299,15 +1299,17 @@ export default function App() {
                 </div>
                 <button
                   className="btn-p sans"
-                  onClick={() => showToast("✓ URLをコピーしました")}
+                  onClick={() => {
+                    const url = window.location.origin;
+                    navigator.clipboard
+                      .writeText(url)
+                      .then(() => showToast("✓ URLをコピーしました"))
+                      .catch(() =>
+                        showToast("コピーに失敗しました", "#C87070")
+                      );
+                  }}
                 >
                   URLをコピー
-                </button>
-                <button
-                  className="btn-o sans"
-                  onClick={() => showToast("✓ QRコードを生成しました")}
-                >
-                  QRコード生成
                 </button>
               </div>
             </div>
