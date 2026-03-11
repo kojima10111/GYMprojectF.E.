@@ -23,7 +23,7 @@
     "eject": "react-scripts eject"
   },
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
 
   "browserslist": [">0.2%", "not dead", "not ie <= 11", "not op_mini all"]
