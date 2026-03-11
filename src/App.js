@@ -1294,7 +1294,7 @@ export default function App() {
                     className="sans"
                     style={{ fontSize: 12, color: "var(--muted)" }}
                   >
-                    https://your-studio.com/booking
+                    https://gy-mproject-f-e.vercel.app/
                   </span>
                 </div>
                 <button
