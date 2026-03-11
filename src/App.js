@@ -78,6 +78,7 @@ export default function App() {
   };
 
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const bookingMap = useMemo(() => {
     const map = {};
@@ -258,6 +259,8 @@ export default function App() {
         .brow:last-child { border-bottom: none; }
         .week-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .pc-nav { display: flex; }
+        .hamburger { display: none !important; }
         @media (max-width: 640px) {
           .two-col-grid { grid-template-columns: 1fr !important; }
           .week-grid { grid-template-columns: 1fr !important; }
@@ -268,6 +271,8 @@ export default function App() {
           header .serif { font-size: 17px !important; }
           header .sans { display: none; }
           .nav-tab { padding: 6px 8px; font-size: 11px; letter-spacing: 0; }
+          .pc-nav { display: none !important; }
+          .hamburger { display: flex !important; }
         }
       `}</style>
 
@@ -388,6 +393,7 @@ export default function App() {
         style={{
           background: "var(--surface)",
           borderBottom: "1px solid var(--border)",
+          position: "relative",
         }}
       >
         <div
@@ -424,7 +430,9 @@ export default function App() {
               Reservation
             </span>
           </div>
-          <nav style={{ display: "flex" }}>
+
+          {/* PC用タブ */}
+          <nav className="pc-nav" style={{ display: "flex" }}>
             <button
               className={`nav-tab sans ${view === "client" ? "active" : ""}`}
               onClick={() => {
@@ -449,7 +457,122 @@ export default function App() {
               </button>
             )}
           </nav>
+
+          {/* スマホ用ハンバーガーボタン */}
+          <button
+            className="hamburger"
+            onClick={() => setMenuOpen((p) => !p)}
+            style={{
+              display: "none",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 8,
+              flexDirection: "column",
+              gap: 5,
+            }}
+          >
+            <span
+              style={{
+                display: "block",
+                width: 22,
+                height: 2,
+                background: menuOpen ? "var(--sage)" : "var(--text)",
+                transition: "all 0.2s",
+                transform: menuOpen
+                  ? "rotate(45deg) translate(5px, 5px)"
+                  : "none",
+              }}
+            />
+            <span
+              style={{
+                display: "block",
+                width: 22,
+                height: 2,
+                background: "var(--text)",
+                transition: "all 0.2s",
+                opacity: menuOpen ? 0 : 1,
+              }}
+            />
+            <span
+              style={{
+                display: "block",
+                width: 22,
+                height: 2,
+                background: menuOpen ? "var(--sage)" : "var(--text)",
+                transition: "all 0.2s",
+                transform: menuOpen
+                  ? "rotate(-45deg) translate(5px, -5px)"
+                  : "none",
+              }}
+            />
+          </button>
         </div>
+
+        {/* スマホ用ドロップダウンメニュー */}
+        {menuOpen && (
+          <div
+            className="mobile-menu"
+            style={{
+              background: "var(--surface)",
+              borderTop: "1px solid var(--border)",
+              padding: "8px 0",
+            }}
+          >
+            {[
+              {
+                label: "予約する",
+                v: "client",
+                action: () => {
+                  setView("client");
+                  resetFlow();
+                  setMenuOpen(false);
+                },
+              },
+              {
+                label: "予約確認",
+                v: "mypage",
+                action: () => {
+                  setView("mypage");
+                  setMenuOpen(false);
+                },
+              },
+              ...(isAdmin
+                ? [
+                    {
+                      label: "管理画面",
+                      v: "admin",
+                      action: () => {
+                        setView("admin");
+                        setMenuOpen(false);
+                      },
+                    },
+                  ]
+                : []),
+            ].map((item) => (
+              <button
+                key={item.v}
+                onClick={item.action}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "14px 24px",
+                  background: view === item.v ? "var(--sage-light)" : "none",
+                  border: "none",
+                  textAlign: "left",
+                  fontFamily: "'Noto Sans JP', sans-serif",
+                  fontSize: 14,
+                  color: view === item.v ? "var(--sage)" : "var(--text)",
+                  cursor: "pointer",
+                  fontWeight: view === item.v ? 500 : 300,
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {view === "client" && step < 3 && (
           <div className="progress-track">
             <div
