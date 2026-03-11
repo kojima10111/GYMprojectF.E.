@@ -267,7 +267,7 @@ export default function App() {
           .brow { flex-wrap: wrap; }
           header .serif { font-size: 17px !important; }
           header .sans { display: none; }
-          .nav-tab { padding: 8px 10px; font-size: 12px; }
+          .nav-tab { padding: 6px 8px; font-size: 11px; letter-spacing: 0; }
         }
       `}</style>
 
