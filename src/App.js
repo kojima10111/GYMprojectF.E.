@@ -320,7 +320,18 @@ export default function App() {
 
         /* Week schedule grid */
         .week-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        @media (max-width: 600px) { .week-grid { grid-template-columns: 1fr; } .two-col { grid-template-columns: 1fr !important; } }
+        /* ===== スマホ対応 ===== */
+        @media (max-width: 640px) {
+          .two-col-grid { grid-template-columns: 1fr !important; }
+          .week-grid { grid-template-columns: 1fr !important; }
+          .cal-day { width: 34px; height: 34px; font-size: 12px; }
+          .slot-btn { padding: 12px 10px; }
+          .modal { padding: 24px !important; }
+          .brow { flex-wrap: wrap; }
+          header .serif { font-size: 17px !important; }
+          header .sans { display: none; }
+          .nav-tab { padding: 8px 12px; font-size: 12px; }
+        }
       `}</style>
 
       {/* Toast */}
@@ -459,13 +470,12 @@ export default function App() {
             {/* ── Step 1: 日程・時間選択 ── */}
             {step === 1 && (
               <div
-                className="fade-up"
+                className="fade-up two-col-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
                   gap: 20,
                 }}
-                data-class="two-col"
               >
                 {/* Calendar */}
                 <div className="card" style={{ padding: 24 }}>
