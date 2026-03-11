@@ -3,21 +3,16 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
-  process.env.REACT_APP_SUPABASE_ANON_KEY // ← anon keyを貼り付け
+  process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
-// ============================================================
-// CONFIG: 曜日・枠・定員設定
-// ============================================================
 const SCHEDULE_CONFIG = {
   3: {
-    // 水曜 (0=日, 1=月, 2=火, 3=水...)
     dayLabel: "水曜日",
     slots: ["10:00", "11:00", "13:00", "14:00"],
     maxPerSlot: 5,
   },
   5: {
-    // 金曜
     dayLabel: "金曜日",
     slots: ["10:00", "11:00"],
     maxPerSlot: 5,
@@ -25,47 +20,6 @@ const SCHEDULE_CONFIG = {
 };
 
 const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
-
-// ============================================================
-// デモ用の初期予約データ生成
-// ============================================================
-function generateDemoBookings() {
-  const bookings = [];
-  const names = [
-    "田中 花子",
-    "佐藤 美咲",
-    "鈴木 由美",
-    "山田 あかり",
-    "中村 さくら",
-    "伊藤 なな",
-    "小林 ひより",
-  ];
-  const today = new Date();
-
-  // 直近4週分の水・金に予約を入れる
-  for (let week = 0; week < 4; week++) {
-    [3, 5].forEach((dow) => {
-      const config = SCHEDULE_CONFIG[dow];
-      config.slots.forEach((time, si) => {
-        const count = Math.floor(Math.random() * 4); // 0〜3人
-        for (let p = 0; p < count; p++) {
-          const d = new Date(today);
-          const diff = (dow - today.getDay() + 7) % 7 || 7;
-          d.setDate(today.getDate() + diff + week * 7);
-          bookings.push({
-            id: `demo_${dow}_${week}_${si}_${p}`,
-            date: dateStr(d),
-            time,
-            name: names[bookings.length % names.length],
-            email: "demo@example.com",
-            status: "confirmed",
-          });
-        }
-      });
-    });
-  }
-  return bookings;
-}
 
 function dateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
@@ -86,11 +40,13 @@ function formatDateJP(s) {
   }）`;
 }
 
-// ============================================================
 export default function App() {
   const isAdmin =
     new URLSearchParams(window.location.search).get("admin") === "true";
   const [view, setView] = useState(isAdmin ? "admin" : "client");
+  const [myEmail, setMyEmail] = useState("");
+  const [myEmailInput, setMyEmailInput] = useState("");
+  const [myCancelTarget, setMyCancelTarget] = useState(null);
   const [bookings, setBookings] = useState([]);
 
   useEffect(() => {
@@ -104,34 +60,26 @@ export default function App() {
     fetchBookings();
   }, []);
 
-  // 予約フロー state
-  const [step, setStep] = useState(1); // 1:日程選択 2:お客様情報 3:完了
-  const [selectedDate, setSelectedDate] = useState(null); // "YYYY-MM-DD"
+  const [step, setStep] = useState(1);
+  const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [form, setForm] = useState({ name: "", email: "" });
 
-  // カレンダー表示月
   const today = new Date();
   const [calYM, setCalYM] = useState({
     year: today.getFullYear(),
     month: today.getMonth(),
   });
 
-  // Toast
   const [toast, setToast] = useState(null);
   const showToast = (msg, color = "#5C8A6E") => {
     setToast({ msg, color });
     setTimeout(() => setToast(null), 3000);
   };
 
-  // キャンセル確認
   const [cancelTarget, setCancelTarget] = useState(null);
 
-  // ============================================================
-  // 予約カウント集計
-  // ============================================================
   const bookingMap = useMemo(() => {
-    // { "YYYY-MM-DD_HH:MM": count }
     const map = {};
     bookings.forEach((b) => {
       if (b.status !== "confirmed") return;
@@ -143,9 +91,6 @@ export default function App() {
 
   const getCount = (date, time) => bookingMap[`${date}_${time}`] || 0;
 
-  // ============================================================
-  // カレンダー計算
-  // ============================================================
   const { firstDow, daysTotal } = useMemo(() => {
     const { year, month } = calYM;
     return {
@@ -167,10 +112,20 @@ export default function App() {
     return SCHEDULE_CONFIG[dow] || null;
   };
 
-  // ============================================================
-  // 予約確定
-  // ============================================================
   const handleBook = async () => {
+    const { data: existing } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("email", form.email)
+      .eq("date", selectedDate)
+      .eq("time", selectedTime)
+      .eq("status", "confirmed");
+
+    if (existing && existing.length > 0) {
+      showToast("⚠️ この日時はすでに予約済みです", "#C87070");
+      return;
+    }
+
     const { data, error } = await supabase
       .from("bookings")
       .insert({
@@ -213,10 +168,8 @@ export default function App() {
     setForm({ name: "", email: "" });
   };
 
-  // ============================================================
-  // Admin: 今後の予約一覧
-  // ============================================================
   const todayS = dateStr(today);
+
   const upcomingBookings = useMemo(
     () =>
       bookings
@@ -229,9 +182,19 @@ export default function App() {
 
   const config = selectedDate ? getDayConfig(selectedDate) : null;
 
-  // ============================================================
-  // RENDER
-  // ============================================================
+  const myBookings = useMemo(
+    () =>
+      bookings
+        .filter(
+          (b) =>
+            b.email === myEmail && b.status === "confirmed" && b.date >= todayS
+        )
+        .sort(
+          (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)
+        ),
+    [bookings, myEmail, todayS]
+  );
+
   return (
     <div
       style={{
@@ -256,19 +219,13 @@ export default function App() {
         }
         .serif { font-family: 'Cormorant', Georgia, serif; }
         .sans { font-family: 'Noto Sans JP', sans-serif; }
-
-        /* Animations */
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
         @keyframes slideRight { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
         @keyframes toastIn { from { opacity:0; transform:translateY(-12px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
         .fade-up { animation: fadeUp 0.4s ease forwards; }
         .slide-right { animation: slideRight 0.3s ease forwards; }
-
-        /* Nav tabs */
         .nav-tab { padding: 8px 20px; background: none; border: none; cursor: pointer; font-family: 'Noto Sans JP', sans-serif; font-size: 13px; color: var(--muted); letter-spacing: 0.08em; border-bottom: 2px solid transparent; transition: all 0.2s; }
         .nav-tab.active { color: var(--sage); border-bottom-color: var(--sage); font-weight: 500; }
-
-        /* Calendar */
         .cal-day { width: 38px; height: 38px; border: none; background: none; cursor: pointer; border-radius: 50%; font-family: 'Noto Sans JP', sans-serif; font-size: 13px; color: var(--text); transition: all 0.15s; position: relative; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
         .cal-day:hover:not(:disabled) { background: var(--sage-light); }
         .cal-day.is-available { color: var(--sage); font-weight: 500; }
@@ -276,18 +233,12 @@ export default function App() {
         .cal-day:disabled { color: #CCC; cursor: default; }
         .cal-day.is-available::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--sage); opacity: 0.5; }
         .cal-day.is-selected::after { background: white; opacity: 0.7; }
-
-        /* Slot buttons */
-        .slot-btn { padding: 14px 12px; border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.2s; text-align: center; }
+        .slot-btn { padding: 14px 12px; border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.2s; text-align: center; width: 100%; }
         .slot-btn:hover:not(.full):not(.selected) { border-color: var(--sage); background: var(--sage-light); }
         .slot-btn.selected { border-color: var(--sage); background: var(--sage-light); }
         .slot-btn.full { background: #F5F3F0; cursor: not-allowed; border-color: var(--border); }
-
-        /* Inputs */
         .inp { width: 100%; padding: 13px 16px; border: 1.5px solid var(--border); background: var(--surface); font-family: 'Noto Sans JP', sans-serif; font-size: 14px; color: var(--text); outline: none; transition: border-color 0.2s; }
         .inp:focus { border-color: var(--sage); }
-
-        /* Buttons */
         .btn-p { background: var(--sage); color: white; border: none; padding: 14px 28px; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.05em; }
         .btn-p:hover { background: var(--sage-dark); }
         .btn-p:disabled { background: #C5D5CC; cursor: not-allowed; }
@@ -295,32 +246,18 @@ export default function App() {
         .btn-o:hover { background: var(--sage-light); }
         .btn-danger { background: #B85C5C; color: white; border: none; padding: 13px 24px; font-family: 'Noto Sans JP', sans-serif; font-size: 14px; cursor: pointer; transition: background 0.2s; }
         .btn-danger:hover { background: #9E4444; }
-
-        /* Cards */
         .card { background: var(--surface); box-shadow: 0 2px 16px rgba(0,0,0,0.05); }
-
-        /* Progress bar */
         .progress-track { height: 2px; background: var(--border); }
         .progress-fill { height: 2px; background: var(--sage); transition: width 0.4s ease; }
-
-        /* Capacity bar */
         .cap-bar { height: 4px; background: #E8E2DA; border-radius: 2px; overflow: hidden; }
         .cap-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
-
-        /* Toast */
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 13px 24px; background: white; border-radius: 2px; box-shadow: 0 6px 32px rgba(0,0,0,0.12); font-family: 'Noto Sans JP', sans-serif; font-size: 13px; z-index: 9999; animation: toastIn 0.3s ease; white-space: nowrap; border-top: 3px solid var(--sage); }
-
-        /* Modal */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
         .modal { background: var(--surface); padding: 36px; max-width: 400px; width: 100%; animation: fadeUp 0.25s ease; }
-
-        /* Booking row */
         .brow { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
         .brow:last-child { border-bottom: none; }
-
-        /* Week schedule grid */
         .week-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        /* ===== スマホ対応 ===== */
+        .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 640px) {
           .two-col-grid { grid-template-columns: 1fr !important; }
           .week-grid { grid-template-columns: 1fr !important; }
@@ -330,7 +267,7 @@ export default function App() {
           .brow { flex-wrap: wrap; }
           header .serif { font-size: 17px !important; }
           header .sans { display: none; }
-          .nav-tab { padding: 8px 12px; font-size: 12px; }
+          .nav-tab { padding: 8px 10px; font-size: 12px; }
         }
       `}</style>
 
@@ -341,7 +278,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Cancel Modal */}
+      {/* 管理者キャンセルModal */}
       {cancelTarget && (
         <div className="overlay" onClick={() => setCancelTarget(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -386,7 +323,67 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Header ── */}
+      {/* マイページキャンセルModal */}
+      {myCancelTarget && (
+        <div className="overlay" onClick={() => setMyCancelTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <p
+              className="serif"
+              style={{ fontSize: 24, marginBottom: 8, color: "var(--text)" }}
+            >
+              予約のキャンセル
+            </p>
+            <p
+              className="sans"
+              style={{
+                fontSize: 13,
+                color: "var(--muted)",
+                lineHeight: 1.9,
+                marginBottom: 28,
+              }}
+            >
+              {formatDateJP(myCancelTarget.date)} {myCancelTarget.time}〜<br />
+              この予約をキャンセルしますか？
+            </p>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                className="btn-o sans"
+                style={{ flex: 1 }}
+                onClick={() => setMyCancelTarget(null)}
+              >
+                戻る
+              </button>
+              <button
+                className="btn-danger sans"
+                style={{ flex: 1 }}
+                onClick={async () => {
+                  const { error } = await supabase
+                    .from("bookings")
+                    .update({ status: "cancelled" })
+                    .eq("id", myCancelTarget.id);
+                  if (error) {
+                    showToast("キャンセルに失敗しました", "#C87070");
+                    return;
+                  }
+                  setBookings((p) =>
+                    p.map((b) =>
+                      b.id === myCancelTarget.id
+                        ? { ...b, status: "cancelled" }
+                        : b
+                    )
+                  );
+                  setMyCancelTarget(null);
+                  showToast("予約をキャンセルしました。", "#A07060");
+                }}
+              >
+                キャンセルする
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <header
         style={{
           background: "var(--surface)",
@@ -428,30 +425,31 @@ export default function App() {
             </span>
           </div>
           <nav style={{ display: "flex" }}>
-            {isAdmin ? (
-              <>
-                <button
-                  className={`nav-tab sans ${
-                    view === "client" ? "active" : ""
-                  }`}
-                  onClick={() => {
-                    setView("client");
-                    resetFlow();
-                  }}
-                >
-                  予約する
-                </button>
-                <button
-                  className={`nav-tab sans ${view === "admin" ? "active" : ""}`}
-                  onClick={() => setView("admin")}
-                >
-                  管理画面
-                </button>
-              </>
-            ) : null}
+            <button
+              className={`nav-tab sans ${view === "client" ? "active" : ""}`}
+              onClick={() => {
+                setView("client");
+                resetFlow();
+              }}
+            >
+              予約する
+            </button>
+            <button
+              className={`nav-tab sans ${view === "mypage" ? "active" : ""}`}
+              onClick={() => setView("mypage")}
+            >
+              予約確認
+            </button>
+            {isAdmin && (
+              <button
+                className={`nav-tab sans ${view === "admin" ? "active" : ""}`}
+                onClick={() => setView("admin")}
+              >
+                管理画面
+              </button>
+            )}
           </nav>
         </div>
-        {/* Progress bar (client only) */}
         {view === "client" && step < 3 && (
           <div className="progress-track">
             <div
@@ -462,21 +460,12 @@ export default function App() {
         )}
       </header>
 
-      {/* ── Main ── */}
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px" }}>
-        {/* ========== CLIENT VIEW ========== */}
+        {/* ========== 予約フロー ========== */}
         {view === "client" && (
           <>
-            {/* ── Step 1: 日程・時間選択 ── */}
             {step === 1 && (
-              <div
-                className="fade-up two-col-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 20,
-                }}
-              >
+              <div className="fade-up two-col-grid">
                 {/* Calendar */}
                 <div className="card" style={{ padding: 24 }}>
                   <div
@@ -532,8 +521,6 @@ export default function App() {
                       ›
                     </button>
                   </div>
-
-                  {/* Day labels */}
                   <div
                     style={{
                       display: "grid",
@@ -562,8 +549,6 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-
-                  {/* Days grid */}
                   <div
                     style={{
                       display: "grid",
@@ -614,7 +599,6 @@ export default function App() {
                         );
                       })}
                   </div>
-
                   <div
                     style={{
                       marginTop: 16,
@@ -622,6 +606,7 @@ export default function App() {
                       background: "var(--sage-light)",
                       display: "flex",
                       gap: 20,
+                      flexWrap: "wrap",
                     }}
                   >
                     {Object.entries(SCHEDULE_CONFIG).map(([dow, cfg]) => (
@@ -691,7 +676,6 @@ export default function App() {
                       >
                         時間帯を選択してください
                       </p>
-
                       <div
                         style={{
                           display: "flex",
@@ -712,7 +696,6 @@ export default function App() {
                               : pct < 90
                               ? "#C8A85A"
                               : "#C87070";
-
                           return (
                             <button
                               key={t}
@@ -784,7 +767,6 @@ export default function App() {
                           );
                         })}
                       </div>
-
                       {selectedTime && (
                         <button
                           className="btn-p sans"
@@ -800,7 +782,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Step 2: お客様情報 ── */}
             {step === 2 && (
               <div
                 className="fade-up card"
@@ -819,7 +800,6 @@ export default function App() {
                 >
                   {formatDateJP(selectedDate)}　{selectedTime}〜
                 </p>
-
                 <div
                   style={{
                     display: "flex",
@@ -874,8 +854,6 @@ export default function App() {
                     />
                   </div>
                 </div>
-
-                {/* Confirmation summary */}
                 <div
                   style={{
                     background: "var(--sage-light)",
@@ -935,7 +913,6 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-
                 <div style={{ display: "flex", gap: 12 }}>
                   <button className="btn-o sans" onClick={() => setStep(1)}>
                     ← 戻る
@@ -952,7 +929,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Step 3: 完了 ── */}
             {step === 3 && (
               <div
                 className="fade-up card"
@@ -1005,7 +981,7 @@ export default function App() {
                   style={{
                     background: "var(--bg)",
                     padding: "20px 24px",
-                    marginBottom: 32,
+                    marginBottom: 24,
                     textAlign: "left",
                   }}
                 >
@@ -1043,6 +1019,38 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+                <div
+                  style={{
+                    background: "var(--sage-light)",
+                    padding: "16px 20px",
+                    marginBottom: 24,
+                    textAlign: "left",
+                  }}
+                >
+                  <p
+                    className="sans"
+                    style={{
+                      fontSize: 12,
+                      color: "var(--sage)",
+                      fontWeight: 500,
+                      marginBottom: 6,
+                    }}
+                  >
+                    📋 予約の確認・キャンセルはこちら
+                  </p>
+                  <p
+                    className="sans"
+                    style={{
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    上部メニューの「予約確認」タブから
+                    <br />
+                    メールアドレスを入力して確認できます。
+                  </p>
+                </div>
                 <button className="btn-o sans" onClick={resetFlow}>
                   別の予約をする
                 </button>
@@ -1051,13 +1059,138 @@ export default function App() {
           </>
         )}
 
-        {/* ========== ADMIN VIEW ========== */}
+        {/* ========== マイページ ========== */}
+        {view === "mypage" && (
+          <div className="fade-up">
+            <div
+              className="card"
+              style={{ maxWidth: 500, margin: "0 auto", padding: 32 }}
+            >
+              <p className="serif" style={{ fontSize: 26, marginBottom: 6 }}>
+                予約の確認・キャンセル
+              </p>
+              <p
+                className="sans"
+                style={{
+                  fontSize: 13,
+                  color: "var(--muted)",
+                  marginBottom: 24,
+                  lineHeight: 1.8,
+                }}
+              >
+                ご予約時に入力したメールアドレスを入力してください。
+              </p>
+              <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                <input
+                  className="inp sans"
+                  type="email"
+                  placeholder="hanako@example.com"
+                  value={myEmailInput}
+                  onChange={(e) => setMyEmailInput(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && setMyEmail(myEmailInput)
+                  }
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="btn-p sans"
+                  onClick={() => setMyEmail(myEmailInput)}
+                  disabled={!myEmailInput}
+                >
+                  検索
+                </button>
+              </div>
+              {myEmail && (
+                <div className="slide-right" style={{ marginTop: 24 }}>
+                  <p
+                    className="sans"
+                    style={{
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <strong style={{ color: "var(--text)" }}>{myEmail}</strong>{" "}
+                    の今後の予約
+                  </p>
+                  {myBookings.length === 0 ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        padding: "32px 0",
+                        color: "var(--muted)",
+                      }}
+                    >
+                      <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+                      <p className="sans" style={{ fontSize: 13 }}>
+                        予約が見つかりませんでした
+                      </p>
+                      <p
+                        className="sans"
+                        style={{ fontSize: 12, marginTop: 6 }}
+                      >
+                        メールアドレスをご確認ください
+                      </p>
+                    </div>
+                  ) : (
+                    myBookings.map((b) => (
+                      <div key={b.id} className="brow">
+                        <div style={{ flex: 1 }}>
+                          <p
+                            className="sans"
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 500,
+                              marginBottom: 2,
+                            }}
+                          >
+                            {formatDateJP(b.date)}
+                          </p>
+                          <p
+                            className="sans"
+                            style={{ fontSize: 12, color: "var(--muted)" }}
+                          >
+                            {b.time}〜　{b.name} 様
+                          </p>
+                        </div>
+                        <button
+                          className="sans"
+                          onClick={() => setMyCancelTarget(b)}
+                          style={{
+                            background: "none",
+                            border: "1px solid var(--border)",
+                            padding: "6px 14px",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            color: "var(--muted)",
+                            transition: "all 0.2s",
+                            flexShrink: 0,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "#B85C5C";
+                            e.currentTarget.style.color = "#B85C5C";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = "var(--border)";
+                            e.currentTarget.style.color = "var(--muted)";
+                          }}
+                        >
+                          キャンセル
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ========== 管理画面 ========== */}
         {view === "admin" && (
           <div className="fade-up">
-            {/* 週間スケジュール概要 */}
             <div className="week-grid" style={{ marginBottom: 20 }}>
               {Object.entries(SCHEDULE_CONFIG).map(([dow, cfg]) => {
-                // 次のその曜日の日付
                 const diff = (Number(dow) - today.getDay() + 7) % 7 || 7;
                 const nextDate = new Date(today);
                 nextDate.setDate(today.getDate() + diff);
@@ -1161,7 +1294,6 @@ export default function App() {
               })}
             </div>
 
-            {/* 予約一覧 */}
             <div className="card" style={{ padding: 28 }}>
               <div
                 style={{
@@ -1198,7 +1330,6 @@ export default function App() {
                   const dow = parseDateStr(b.date).getDay();
                   const cfg = SCHEDULE_CONFIG[dow];
                   const cnt = getCount(b.date, b.time);
-                  const dotColor = dow === 3 ? "var(--sage)" : "var(--warm)";
                   return (
                     <div key={b.id} className="brow">
                       <div
@@ -1206,7 +1337,7 @@ export default function App() {
                           width: 10,
                           height: 10,
                           borderRadius: "50%",
-                          background: dotColor,
+                          background: dow === 3 ? "var(--sage)" : "var(--warm)",
                           flexShrink: 0,
                         }}
                       />
@@ -1268,7 +1399,6 @@ export default function App() {
               )}
             </div>
 
-            {/* URL共有 */}
             <div className="card" style={{ padding: 24, marginTop: 16 }}>
               <p className="serif" style={{ fontSize: 18, marginBottom: 6 }}>
                 予約URLの共有
