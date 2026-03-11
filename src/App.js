@@ -2,8 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
-  "https://ydqkahshejfkkjekyjmx.supabase.co", // ← API URLを貼り付け
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkcWthaHNoZWpma2tqZWt5am14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzY5NjksImV4cCI6MjA4ODgxMjk2OX0.bLfPSbVMuQMg3K9Uq57DbmgeTlsJ2gBE62xGDZ7ra04" // ← anon keyを貼り付け
+  process.env.REACT_APP_SUPABASE_URL,
+  process.env.REACT_APP_SUPABASE_ANON_KEY // ← anon keyを貼り付け
 );
 
 // ============================================================
