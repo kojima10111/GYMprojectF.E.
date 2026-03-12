@@ -1250,14 +1250,22 @@ export default function App() {
                   placeholder="hanako@example.com"
                   value={myEmailInput}
                   onChange={(e) => setMyEmailInput(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && setMyEmail(myEmailInput)
-                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const trimmed = myEmailInput.trim().toLowerCase();
+                      setMyEmail(trimmed);
+                      setMyEmailInput(trimmed);
+                    }
+                  }}
                   style={{ flex: 1 }}
                 />
                 <button
                   className="btn-p sans"
-                  onClick={() => setMyEmail(myEmailInput)}
+                  onClick={() => {
+                    const trimmed = myEmailInput.trim().toLowerCase();
+                    setMyEmail(trimmed);
+                    setMyEmailInput(trimmed);
+                  }}
                   disabled={!myEmailInput}
                 >
                   検索
