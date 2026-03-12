@@ -78,6 +78,7 @@ export default function App() {
   };
 
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const bookingMap = useMemo(() => {
@@ -114,36 +115,47 @@ export default function App() {
   };
 
   const handleBook = async () => {
-    const { data: existing } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("email", form.email)
-      .eq("date", selectedDate)
-      .eq("time", selectedTime)
-      .eq("status", "confirmed");
+    // ダブルクリック防止
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    if (existing && existing.length > 0) {
-      showToast("⚠️ この日時はすでに予約済みです", "#C87070");
-      return;
-    }
+    try {
+      const config = getDayConfig(selectedDate);
+      const { data, error } = await supabase.rpc("book_slot", {
+        p_date: selectedDate,
+        p_time: selectedTime,
+        p_name: form.name,
+        p_email: form.email,
+        p_max_per_slot: config.maxPerSlot,
+      });
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .insert({
-        date: selectedDate,
-        time: selectedTime,
-        name: form.name,
-        email: form.email,
-        status: "confirmed",
-      })
-      .select();
-    if (error) {
-      showToast("予約に失敗しました", "#C87070");
-      return;
+      if (error) {
+        showToast("予約に失敗しました", "#C87070");
+        return;
+      }
+
+      if (data.error === "full") {
+        showToast("⚠️ 満席のため予約できませんでした", "#C87070");
+        // 最新の予約状況を再取得
+        const { data: latest } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("status", "confirmed");
+        if (latest) setBookings(latest);
+        return;
+      }
+
+      if (data.error === "duplicate") {
+        showToast("⚠️ この日時はすでに予約済みです", "#C87070");
+        return;
+      }
+
+      setBookings((p) => [...p, data]);
+      setStep(3);
+      showToast("✓ 予約が完了しました！");
+    } finally {
+      setIsSubmitting(false);
     }
-    setBookings((p) => [...p, data[0]]);
-    setStep(3);
-    showToast("✓ 予約が完了しました！");
   };
 
   const handleCancel = async (id) => {
@@ -1043,10 +1055,10 @@ export default function App() {
                   <button
                     className="btn-p sans"
                     style={{ flex: 1 }}
-                    disabled={!form.name || !form.email}
+                    disabled={!form.name || !form.email || isSubmitting}
                     onClick={handleBook}
                   >
-                    予約を確定する
+                    {isSubmitting ? "送信中..." : "予約を確定する"}
                   </button>
                 </div>
               </div>
