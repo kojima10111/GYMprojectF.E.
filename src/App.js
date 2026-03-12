@@ -50,6 +50,7 @@ export default function App() {
   const [bookings, setBookings] = useState([]);
 
   useEffect(() => {
+    // 初回データ取得
     const fetchBookings = async () => {
       const { data } = await supabase
         .from("bookings")
@@ -58,6 +59,33 @@ export default function App() {
       if (data) setBookings(data);
     };
     fetchBookings();
+
+    // リアルタイム監視を設定
+    const channel = supabase
+      .channel("bookings-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookings" },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            // 新規予約が入ったら追加
+            if (payload.new.status === "confirmed") {
+              setBookings((prev) => [...prev, payload.new]);
+            }
+          } else if (payload.eventType === "UPDATE") {
+            // キャンセルなど更新があったら反映
+            setBookings((prev) =>
+              prev.map((b) => (b.id === payload.new.id ? payload.new : b))
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // コンポーネント終了時に監視を解除
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const [step, setStep] = useState(1);
